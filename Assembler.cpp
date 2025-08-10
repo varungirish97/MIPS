@@ -1,9 +1,9 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <unordered_map>
+#include <algorithm>
 #include <vector>
-#include "ISA.h"
+#include "Assembler.h"
 
 using namespace std;
 
@@ -11,62 +11,73 @@ int getRegister(const string &reg){
     return stoi(reg.substr(1));
 }
 
-
-
-struct RTypeInstr {
-    uint8_t rs, rt, rd, shamt;
-    R_Funct funct;
-
-    uint32_t encode() {
-        uint32_t code = 0;
-        code |= 0 << 26;
-        code |= (rs & 0x1F) << 21;
-        code |= (rt & 0x1F) << 16;
-        code |= (rd & 0x1F) << 11;
-        code |= (shamt && 0x1F) << 6;
-        code |= static_cast<uint8_t>(funct) & 0x3F;
-        return code;        
-    }
-};
-
-struct ITypeInstr {
-    uint8_t opcode, rs, rt;
-    uint16_t imm;
-
-    uint32_t encode() {
-        uint32_t code = 0;
-        code |= opcode << 26;
-        code |= (rs & 0x1F) << 21;
-        code |= (rt & 0x1F) << 16;
-        code |= static_cast<uint16_t>(imm) & 0xFFFF;
-        return code;        
-    }
-};
-
-struct JTypeInstr {
-    uint8_t opcode;
-    uint32_t addr;
-
-    uint32_t encode() {
-        uint32_t code = 0;
-        code |= opcode << 26;
-        code |= static_cast<uint32_t> (addr) & (0x3FFFFFF)
-        return code;        
-    }
-};
-
-int main() {
+void parseInputFile() {
 
     ifstream infile("program.txt");
     ofstream outfile("instr_seq.txt");
-
     if(!infile) {
         std::cerr << "Failed to open the file\n";
     }
-
+    if(!outfile) {
+            std::cerr << "Error opening file for write\n";
+    }
+        
     std::string line;
     while(getline(infile, line)) {
-        std::cout << line << std::endl;
+        line.erase(std::remove(line.begin(), line.end(), ','), line.end());
+
+        std::istringstream iss(line);                       // This reads the file as string stream and separates it by whitepsaces.
+        std::string instr;
+        uint32_t encoded_instr;
+        iss >> instr;                                       // First word of the stream. Assumed to be the Instr name.
+        
+
+        // Checks if it is RType and encodes the instruction
+        if(R_Funct.find(instr) != R_Funct.end()) {
+            auto i = R_Funct.find(instr);
+            std::string rs, rt, rd;
+            iss >> rd >> rs >> rt;
+            std::cout << rd << rs << rt << std::endl;
+            RTypeInstr r_instr;
+            r_instr.rs      = register_map.at(rs);
+            r_instr.rd      = register_map.at(rd);
+            r_instr.rt      = register_map.at(rt);
+            r_instr.shamt   = 0;
+            r_instr.funct   = i->second;
+            
+            encoded_instr   = r_instr.encode();
+        }
+
+        else if(I_Opcode_Map.find(instr) != I_Opcode_Map.end()) {
+            auto i = I_Opcode_Map.find(instr);
+            std::string rs, rt, imm;
+            iss >> rt >> rs >> imm;
+            ITypeInstr i_instr;
+            i_instr.rs      = register_map.at(rs);
+            i_instr.rt      = register_map.at(rt);
+            i_instr.imm     = std::stoi(imm);
+            i_instr.opcode  = i->second;
+
+            encoded_instr   = i_instr.encode();
+        }
+
+        else if(J_Opcode_Map.find(instr) != J_Opcode_Map.end()) {
+            auto i = J_Opcode_Map.find(instr);
+            std::string address;
+            iss >> address;
+            JTypeInstr j_instr;
+            j_instr.addr    = std::stoi(address);
+            j_instr.opcode  = i->second;
+
+            encoded_instr   = j_instr.encode();
+        }
+        outfile << std::hex << encoded_instr << std::endl;
+
     }
 
+}
+
+int main() {
+    parseInputFile();
+    return 1;
 }

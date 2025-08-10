@@ -57,20 +57,5 @@ uint32_t createJTypeInstr(uint8_t opcode, uint32_t address){
 
 int trial_main(){
 
-uint8_t opcode = static_cast<uint8_t>(Opcode::R_TYPE);
-uint8_t rd = 1;
-uint8_t rs = 2;
-uint8_t rt = 3;
-
-Funct function = Funct::ADD;
-uint8_t shamt = 0;
-uint16_t immediate = 0;
-uint32_t address = 0;
-
-if(opcode == static_cast<uint8_t>(Opcode::R_TYPE)){
-    uint32_t RTypeInstr = createRTypeInstr( 0, rs, rt, rd, shamt, static_cast<uint8_t>(function) );
-    cout << "R-Type instruction is : 0x" << hex << RTypeInstr << endl;
-}
-
 return 0;
 }
