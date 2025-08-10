@@ -48,14 +48,14 @@ uint32_t createRTypeInstr(uint8_t opcode, uint8_t rs, uint8_t rt, uint8_t rd, ui
 
 uint32_t createITypeInstr(uint8_t opcode, uint8_t rs, uint8_t rt, uint16_t immediate){
     return ( ( opcode << 26 ) | ( rs << 21 ) | ( rt << 16 ) | ( immediate ) );
-}
+} 
 
 uint32_t createJTypeInstr(uint8_t opcode, uint32_t address){
     return ( ( opcode << 26 ) | ( address ) );
 }
 
 
-int main(){
+int trial_main(){
 
 uint8_t opcode = static_cast<uint8_t>(Opcode::R_TYPE);
 uint8_t rd = 1;
@@ -72,4 +72,5 @@ if(opcode == static_cast<uint8_t>(Opcode::R_TYPE)){
     cout << "R-Type instruction is : 0x" << hex << RTypeInstr << endl;
 }
 
+return 0;
 }
