@@ -66,7 +66,7 @@ void parseInputFile() {
             std::string address;
             iss >> address;
             JTypeInstr j_instr;
-            j_instr.addr    = std::stoi(address);
+            j_instr.addr    = std::stoi(address, nullptr, 16);
             j_instr.opcode  = i->second;
 
             encoded_instr   = j_instr.encode();
