@@ -37,7 +37,6 @@ void parseInputFile() {
             auto i = R_Funct.find(instr);
             std::string rs, rt, rd;
             iss >> rd >> rs >> rt;
-            std::cout << rd << rs << rt << std::endl;
             RTypeInstr r_instr;
             r_instr.rs      = register_map.at(rs);
             r_instr.rd      = register_map.at(rd);
@@ -76,8 +75,9 @@ void parseInputFile() {
     }
 
 }
-
+/*
 int main() {
     parseInputFile();
     return 1;
 }
+*/

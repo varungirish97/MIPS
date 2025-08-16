@@ -1,3 +1,6 @@
+#ifndef ISA_H
+#define ISA_H
+
 #include <unordered_map>
 
 // Top-level class for the different instruction types
@@ -40,3 +43,5 @@ const std::unordered_map<std::string, uint8_t> J_Opcode_Map = {
     {"JAL", 0x03},
     {"INVALID", 0xFF}
 };
+
+#endif

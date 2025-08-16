@@ -1,6 +1,12 @@
+#ifndef ASSEMBLER_H
+#define ASSEMBLER_H
+
 #include <unordered_map>
 #include <string>
 #include "ISA.h"
+
+int getRegister(const std::string &reg);
+void parseInputFile();
 
 // This hashmap gives a mapping between the $register name to a register number. Easy to manage ig
 const std::unordered_map<std::string, int8_t> register_map = {
@@ -58,3 +64,5 @@ struct JTypeInstr {
         return code;        
     }
 };
+
+#endif
