@@ -98,6 +98,7 @@ class Pipeline {
 
             EX_MEM.PC_plus_4    =   ID_EX.PC_plus_4;
             EX_MEM.Rd           =   (ID_EX.RegDst) ? ID_EX.Rd : ID_EX.Rt;
+            EX_MEM.Rt_Val       =   ID_EX.Rt_Val;
             EX_MEM.ALURes       =   result;
             EX_MEM.RegWr        =   ID_EX.RegWr;
             EX_MEM.MemRd        =   ID_EX.MemRd;
@@ -105,8 +106,25 @@ class Pipeline {
             EX_MEM.MemToReg     =   ID_EX.MemToReg;
         }
 
-        void MEM_Stage();
+        void MEM_Stage() {
+            uint32_t memRd = EX_MEM.ALURes;
+            // Handling the LW instruction
+            if(EX_MEM.MemRd) {
+                memRd   =   ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4];
+            }
+            // Handling the SW instruction
+            if(EX_MEM.MemWr) {
+                ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4]   =   EX_MEM.Rt_Val;
+            }
+
+            MEM_WB.Mem_ALU  =   memRd;
+            MEM_WB.Rd       =   EX_MEM.Rd;
+            MEM_WB.RegWr    =   EX_MEM.RegWr;
+            MEM_WB.MemToReg =   EX_MEM.MemToReg;
+        }
+
         void WB_Stage();
+        
         void clock() {
             IF_Stage();
             ID_Stage();
@@ -142,9 +160,9 @@ struct ID_EX {
 
 struct EX_MEM {
     uint32_t    PC_plus_4   =   0x00000000;
-    uint8_t     Rd          =   0;                                            //Needed for R-Type as this is the destination.
-    uint8_t     Rt          =   0;                                            //Needed for I-Type as this is the destination.
+    uint8_t     Rd          =   0;                                            //Needed for R-Type as this is the destination.                                          //Needed for I-Type as this is the destination.
     uint32_t    ALURes      =   0;
+    uint32_t    Rt_Val      =   0;
 
     bool        MemRd       =   false;
     bool        MemWr       =   false;
@@ -153,8 +171,7 @@ struct EX_MEM {
 };
 
 struct MEM_WB {
-    uint32_t    ALURes      =   0;
-    uint32_t    MemData     =   0;
+    uint32_t    Mem_ALU     =   0;
     uint32_t    Rd          =   0;
 
     bool        RegWr       =   false;
