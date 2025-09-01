@@ -34,7 +34,8 @@ class Pipeline {
         MEM_WB          MEM_WB;
         MIPS_MEMORY     ALL_MEMORIES;
 
-        void generate_control_signals(uint8_t opcode);
+        void generate_control_signals(uint8_t opcode, uint8_t funct);
+        uint8_t generate_ALU_control(uint8_t opcode);
         void IF_Stage() {
             if (ALL_MEMORIES.PC < ALL_MEMORIES.num_instr * 4) {
                 uint32_t instr      = ALL_MEMORIES.I_MEM[ALL_MEMORIES.PC >> 2];           // Each instruction is 32 bits or 4 bytes, so we need to index IMEM with PC/4
@@ -73,10 +74,37 @@ class Pipeline {
             ID_EX.RegWr     =   false;
             ID_EX.MemToReg  =   false;
 
-            generate_control_signals(opcode);
+            generate_control_signals(opcode, funct);
         }
 
-        void EX_Stage();
+        void EX_Stage() {
+            uint8_t ALU_ctrl    = generate_ALU_control(ID_EX.ALUFunct);        // One hot encoded ALU control signals
+            uint32_t result     = 0x0;
+            uint32_t ALU_A      =   ID_EX.Rs_Val;
+            uint32_t ALU_B      =   (ID_EX.ALUSrc) ? ID_EX.Immediate : ID_EX.Rt_Val;
+
+            switch(ALU_ctrl) {
+                case 0x01:      // ADD
+                    result = ALU_A + ALU_B;
+                case 0x02:      // SUB
+                    result = ALU_A - ALU_B;
+                case 0x03:      // AND
+                    result = ALU_A & ALU_B;
+                case 0x04:      // OR
+                    result = ALU_A | ALU_B;
+                case 0x05:      // SLT
+                    result = (ALU_A < ALU_B) ? 0x1 : 0x0;
+            }
+
+            EX_MEM.PC_plus_4    =   ID_EX.PC_plus_4;
+            EX_MEM.Rd           =   (ID_EX.RegDst) ? ID_EX.Rd : ID_EX.Rt;
+            EX_MEM.ALURes       =   result;
+            EX_MEM.RegWr        =   ID_EX.RegWr;
+            EX_MEM.MemRd        =   ID_EX.MemRd;
+            EX_MEM.MemWr        =   ID_EX.MemWr;
+            EX_MEM.MemToReg     =   ID_EX.MemToReg;
+        }
+
         void MEM_Stage();
         void WB_Stage();
         void clock() {
@@ -101,7 +129,7 @@ struct ID_EX {
     uint32_t    Rs_Val      =   0;
     uint32_t    Rt_Val      =   0;
     uint32_t    ALUFunct    =   0;
-    int32_t    Immediate   =   0;
+    int32_t     Immediate   =   0;
 
     bool        RegDst      =   false;                                        //Decides the destination register. For R-Type it is Rd and for I-Type it is Rt
     bool        ALUSrc      =   false;                                        //Decides the 2nd input to the ALU. R-type have the 2nd SRC to be from RegFile, but for I-Type we get it from regValue+sign_extended_imm
@@ -198,7 +226,7 @@ int MIPS_MEMORY::write_DM(uint32_t line_addr, uint32_t value) {
     D_MEM[line_addr] = value;
 }
 
-void Pipeline::generate_control_signals(uint8_t opcode) {
+void Pipeline::generate_control_signals(uint8_t opcode, uint8_t funct) {
 
     bool r_type     =   false;
     bool i_type     =   false;
@@ -216,6 +244,7 @@ void Pipeline::generate_control_signals(uint8_t opcode) {
     if(r_type) {
         ID_EX.RegDst    =   true;
         ID_EX.RegWr     =   true;
+        ID_EX.ALUFunct  =   funct;
     }
     // Load Word instruction
     else if(i_type & opcode == 0x23) {
@@ -223,20 +252,47 @@ void Pipeline::generate_control_signals(uint8_t opcode) {
         ID_EX.MemRd     =   true;
         ID_EX.RegWr     =   true;
         ID_EX.MemToReg  =   true;
+        ID_EX.ALUFunct  =   opcode;
     }
     // Store Word instruction
     else if(i_type & opcode == 0x2B) {
         ID_EX.ALUSrc    =   true;
         ID_EX.MemWr     =   true;
+        ID_EX.ALUFunct  =   opcode;
     }
     else if(i_type) {
         ID_EX.ALUSrc    =   true;
         ID_EX.RegWr     =   true;
+        ID_EX.ALUFunct  =   opcode;
     }
     else if(i_type & (opcode == 0x04 || opcode == 0x05)) {
         ID_EX.Branch    =   true;
+        ID_EX.ALUFunct  =   opcode;
     }
 
+}
+
+uint8_t Pipeline::generate_ALU_control(uint8_t opcode) {
+    switch(opcode) {
+        case 0x20:      // ADD
+            return 0x01;
+        case 0x08:      // ADDI
+            return 0x01;
+        case 0x22:      // SUB
+            return 0x02;
+        case 0x24:      // AND
+            return 0x03;
+        case 0x0C:     // ANDI
+            return 0x03;
+        case 0x25:      // OR
+            return 0x04;
+        case 0x0D:      // ORI
+            return 0x04;
+        case 0x2A:      // SLT
+            return 0x05;
+        case 0x0A:      // SLTI
+            return 0x05;
+    }
 }
 
 #endif
