@@ -12,7 +12,7 @@ enum class InstFormat {
 };
 
 // R-type funct opcodes map
-const std::unordered_map<std::string, int> R_Funct = {
+const std::unordered_map<std::string, uint8_t> R_Funct = {
     {"SUB", 0x22},
     {"ADD", 0x20},
     {"AND", 0x24},
@@ -43,5 +43,16 @@ const std::unordered_map<std::string, uint8_t> J_Opcode_Map = {
     {"JAL", 0x03},
     {"INVALID", 0xFF}
 };
+
+bool findValinMap(const std::unordered_map<std::string, uint8_t> map, uint8_t opcode) {
+    bool found = false;
+    for(const auto& element : map) {
+        if(element.second == opcode) {
+            found = true;
+            break;
+        }
+    }
+    return found;
+}
 
 #endif
