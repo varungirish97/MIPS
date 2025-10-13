@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run app",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/app",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,        // pops up a terminal for program output
+      "MIMode": "lldb",
+      "preLaunchTask": "build"
+    }
+  ]
+}

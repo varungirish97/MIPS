@@ -2,6 +2,7 @@
 #define MIPS_H
 
 #include "ISA.h"
+#include "Assembler.h"
 #include <iostream>
 #include <cstdint>
 #include <fstream>
@@ -26,6 +27,50 @@ class MIPS_MEMORY {
         //No write_IM because the plan is to load the instruction memory at the beginning of the program
 };
 
+struct IF_ID {
+    uint32_t PC_plus_4 = 0x00000000;
+    uint32_t Instruction = 0x00000000;
+};
+struct ID_EX {
+    uint32_t    PC_plus_4   =   0x00000000;
+    uint8_t     Rs          =   0;
+    uint8_t     Rt          =   0;
+    uint8_t     Rd          =   0;
+    uint32_t    Rs_Val      =   0;
+    uint32_t    Rt_Val      =   0;
+    uint32_t    ALUFunct    =   0;
+    int32_t     Immediate   =   0;
+
+    bool        RegDst      =   false;                                        //Decides the destination register. For R-Type it is Rd and for I-Type it is Rt
+    bool        ALUSrc      =   false;                                        //Decides the 2nd input to the ALU. R-type have the 2nd SRC to be from RegFile, but for I-Type we get it from regValue+sign_extended_imm
+    bool        MemRd       =   false;                                        //LW instruction
+    bool        MemWr       =   false;                                        //SW instruction
+    bool        RegWr       =   false;                                        //For any R-type or LW as well
+    bool        MemToReg    =   false;                                        //Decides whether to write the register file from the output of the ALU or Memory
+    bool        Branch      =   false;    
+};
+
+struct EX_MEM {
+    uint32_t    PC_plus_4   =   0x00000000;
+    uint8_t     Rd          =   0;                                            //Needed for R-Type as this is the destination.                                          //Needed for I-Type as this is the destination.
+    uint32_t    ALURes      =   0;
+    uint32_t    Rt_Val      =   0;
+
+    bool        MemRd       =   false;
+    bool        MemWr       =   false;
+    bool        RegWr       =   false;
+    bool        MemToReg    =   false;
+};
+
+struct MEM_WB {
+    uint32_t    MemData     =   0;
+    uint32_t    ALURes      =   0;
+    uint32_t    Rd          =   0;
+
+    bool        RegWr       =   false;
+    bool        MemToReg    =   false;
+};
+
 class Pipeline {
     public:
         IF_ID           IF_ID;
@@ -36,6 +81,7 @@ class Pipeline {
 
         void generate_control_signals(uint8_t opcode, uint8_t funct);
         uint8_t generate_ALU_control(uint8_t opcode);
+        
         void IF_Stage() {
             if (ALL_MEMORIES.PC < ALL_MEMORIES.num_instr * 4) {
                 uint32_t instr      = ALL_MEMORIES.I_MEM[ALL_MEMORIES.PC >> 2];           // Each instruction is 32 bits or 4 bytes, so we need to index IMEM with PC/4
@@ -107,23 +153,31 @@ class Pipeline {
         }
 
         void MEM_Stage() {
-            uint32_t memRd = EX_MEM.ALURes;
+            MEM_WB.MemData = 0;
             // Handling the LW instruction
             if(EX_MEM.MemRd) {
-                memRd   =   ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4];
+                MEM_WB.MemData   =   ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4];
             }
             // Handling the SW instruction
             if(EX_MEM.MemWr) {
                 ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4]   =   EX_MEM.Rt_Val;
             }
 
-            MEM_WB.Mem_ALU  =   memRd;
+            MEM_WB.ALURes   =   EX_MEM.ALURes;
             MEM_WB.Rd       =   EX_MEM.Rd;
             MEM_WB.RegWr    =   EX_MEM.RegWr;
             MEM_WB.MemToReg =   EX_MEM.MemToReg;
         }
 
-        void WB_Stage();
+        void WB_Stage() {
+            // Selects between the output of the memory and the ALU
+            uint32_t reg_data = (MEM_WB.MemToReg) ? MEM_WB.MemData : MEM_WB.ALURes; 
+            
+            // Updates the Register file
+            if (MEM_WB.RegWr) {
+                ALL_MEMORIES.REG_FILE[MEM_WB.Rd]    =   reg_data;
+            }
+        }
         
         void clock() {
             IF_Stage();
@@ -132,50 +186,6 @@ class Pipeline {
             MEM_Stage();
             WB_Stage();
         }
-};
-
-struct IF_ID {
-    uint32_t PC_plus_4 = 0x00000000;
-    uint32_t Instruction = 0x00000000;
-};
-
-struct ID_EX {
-    uint32_t    PC_plus_4   =   0x00000000;
-    uint8_t     Rs          =   0;
-    uint8_t     Rt          =   0;
-    uint8_t     Rd          =   0;
-    uint32_t    Rs_Val      =   0;
-    uint32_t    Rt_Val      =   0;
-    uint32_t    ALUFunct    =   0;
-    int32_t     Immediate   =   0;
-
-    bool        RegDst      =   false;                                        //Decides the destination register. For R-Type it is Rd and for I-Type it is Rt
-    bool        ALUSrc      =   false;                                        //Decides the 2nd input to the ALU. R-type have the 2nd SRC to be from RegFile, but for I-Type we get it from regValue+sign_extended_imm
-    bool        MemRd       =   false;                                        //LW instruction
-    bool        MemWr       =   false;                                        //SW instruction
-    bool        RegWr       =   false;                                        //For any R-type or LW as well
-    bool        MemToReg    =   false;                                        //Decides whether to write the register file from the output of the ALU or Memory
-    bool        Branch      =   false;    
-};
-
-struct EX_MEM {
-    uint32_t    PC_plus_4   =   0x00000000;
-    uint8_t     Rd          =   0;                                            //Needed for R-Type as this is the destination.                                          //Needed for I-Type as this is the destination.
-    uint32_t    ALURes      =   0;
-    uint32_t    Rt_Val      =   0;
-
-    bool        MemRd       =   false;
-    bool        MemWr       =   false;
-    bool        RegWr       =   false;
-    bool        MemToReg    =   false;
-};
-
-struct MEM_WB {
-    uint32_t    Mem_ALU     =   0;
-    uint32_t    Rd          =   0;
-
-    bool        RegWr       =   false;
-    bool        MemToReg    =   false;
 };
 
 int MIPS_MEMORY::load_I_Mem(std::ifstream &input_file) {
@@ -230,6 +240,8 @@ int MIPS_MEMORY::write_RF(uint32_t reg, uint32_t value) {
         std::cerr << "Register value exceeds the number of architectural registers" << std::endl;
         return 1;
     }
+    else
+        return 0;
 
     REG_FILE[reg] = value;
 }
@@ -239,6 +251,8 @@ int MIPS_MEMORY::write_DM(uint32_t line_addr, uint32_t value) {
         std::cerr << "Line address exceeds the size of DMEM" << std::endl;
         return 1;
     }
+    else
+        return 0;
 
     D_MEM[line_addr] = value;
 }
@@ -264,7 +278,7 @@ void Pipeline::generate_control_signals(uint8_t opcode, uint8_t funct) {
         ID_EX.ALUFunct  =   funct;
     }
     // Load Word instruction
-    else if(i_type & opcode == 0x23) {
+    else if(i_type & (opcode == 0x23)) {
         ID_EX.ALUSrc    =   true;
         ID_EX.MemRd     =   true;
         ID_EX.RegWr     =   true;
@@ -272,7 +286,7 @@ void Pipeline::generate_control_signals(uint8_t opcode, uint8_t funct) {
         ID_EX.ALUFunct  =   opcode;
     }
     // Store Word instruction
-    else if(i_type & opcode == 0x2B) {
+    else if(i_type & (opcode == 0x2B)) {
         ID_EX.ALUSrc    =   true;
         ID_EX.MemWr     =   true;
         ID_EX.ALUFunct  =   opcode;
@@ -309,6 +323,8 @@ uint8_t Pipeline::generate_ALU_control(uint8_t opcode) {
             return 0x05;
         case 0x0A:      // SLTI
             return 0x05;
+        default:
+            return 0x0;
     }
 }
 
