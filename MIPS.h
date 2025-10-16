@@ -17,6 +17,7 @@ class MIPS_MEMORY {
         uint32_t PC             = 0x00000000;       // Program Counter starts off from 0. Indexes the I_MEM
         int      num_instr      = 0;
 
+        MIPS_MEMORY() = default;
         int load_I_Mem(std::ifstream &input_file);
         int read_RF(uint32_t reg);
         int read_IM(uint32_t program_counter);
@@ -79,6 +80,13 @@ class Pipeline {
         MEM_WB          MEM_WB;
         MIPS_MEMORY     ALL_MEMORIES;
 
+        Pipeline(uint32_t instr_mem[256], int num_instr){
+            for(int i = 0 ; i < 256 ; i++){
+                ALL_MEMORIES.I_MEM[i] = instr_mem[i];
+            }
+            ALL_MEMORIES.num_instr = num_instr;
+        }
+        
         void generate_control_signals(uint8_t opcode, uint8_t funct);
         uint8_t generate_ALU_control(uint8_t opcode);
         
@@ -240,10 +248,11 @@ int MIPS_MEMORY::write_RF(uint32_t reg, uint32_t value) {
         std::cerr << "Register value exceeds the number of architectural registers" << std::endl;
         return 1;
     }
-    else
+    else{
+        REG_FILE[reg] = value;
         return 0;
-
-    REG_FILE[reg] = value;
+    }
+   
 }
 
 int MIPS_MEMORY::write_DM(uint32_t line_addr, uint32_t value) {
@@ -251,10 +260,11 @@ int MIPS_MEMORY::write_DM(uint32_t line_addr, uint32_t value) {
         std::cerr << "Line address exceeds the size of DMEM" << std::endl;
         return 1;
     }
-    else
+    else{
+        D_MEM[line_addr] = value;
         return 0;
+    }
 
-    D_MEM[line_addr] = value;
 }
 
 void Pipeline::generate_control_signals(uint8_t opcode, uint8_t funct) {
