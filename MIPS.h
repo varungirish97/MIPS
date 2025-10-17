@@ -103,9 +103,9 @@ class Pipeline {
         void ID_Stage() {
             uint32_t instr      = IF_ID.Instruction;
             uint8_t opcode      = (instr >> 26) & 0x3F;
-            uint8_t rs          = (instr >> 21) & 0x3F;
-            uint8_t rt          = (instr >> 16) & 0x3F;
-            uint8_t rd          = (instr >> 11) & 0x3F;
+            uint8_t rs          = (instr >> 21) & 0x1F;
+            uint8_t rt          = (instr >> 16) & 0x1F;
+            uint8_t rd          = (instr >> 11) & 0x1F;
             uint8_t shamt       = (instr >> 6) & 0x1F;
             uint8_t funct       = instr & 0x3F;
             uint16_t imm        = instr & 0xFFFF;                       // For I type instructions
@@ -115,6 +115,9 @@ class Pipeline {
             ID_EX.Rs        =   rs;
             ID_EX.Rt        =   rt;
             ID_EX.Rd        =   rd;
+            std::cout << rs << std::endl;
+            std::cout << rt << std::endl;
+            std::cout << rd << std::endl;
 
             // Read RF and get Rs_val and Rt_val;
             ID_EX.Rs_Val    =   ALL_MEMORIES.REG_FILE[rs];
@@ -140,14 +143,19 @@ class Pipeline {
             switch(ALU_ctrl) {
                 case 0x01:      // ADD
                     result = ALU_A + ALU_B;
+                    break;
                 case 0x02:      // SUB
                     result = ALU_A - ALU_B;
+                    break;
                 case 0x03:      // AND
                     result = ALU_A & ALU_B;
+                    break;
                 case 0x04:      // OR
                     result = ALU_A | ALU_B;
+                    break;
                 case 0x05:      // SLT
                     result = (ALU_A < ALU_B) ? 0x1 : 0x0;
+                    break;
             }
 
             EX_MEM.PC_plus_4    =   ID_EX.PC_plus_4;
@@ -333,6 +341,14 @@ uint8_t Pipeline::generate_ALU_control(uint8_t opcode) {
             return 0x05;
         case 0x0A:      // SLTI
             return 0x05;
+        case 0x23:      // LW
+            return 0x01;
+        case 0x2B:      // SW
+            return 0x01;
+        case 0x04:      // BEQ
+            return 0x02;
+        case 0x05:      // BNE
+            return 0x02;
         default:
             return 0x0;
     }
