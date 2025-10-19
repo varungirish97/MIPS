@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <string>
 #include "ISA.h"
+#include <vector>
 using namespace std;
 
 // R-Type instruction structure and encodes the instruction according to the format described in the excel
@@ -115,6 +116,18 @@ int getRegister(const string &reg){
     return stoi(reg.substr(1));
 }
 
+std::vector<std::string> load_assembly_file(const std::string &filename) {
+    std::vector<std::string> I_MEM_ASM;
+    std::ifstream file(filename);
+    std::string line;
+    while(std::getline(file, line)) {
+        if(!line.empty()) {
+            I_MEM_ASM.push_back(line);
+        }
+    }
+    return I_MEM_ASM;
+}
+
 void parseInputFile() {
 
     ifstream infile("program.txt");
@@ -145,7 +158,7 @@ void parseInputFile() {
             r_instr.rs      = register_map.at(rs);
             r_instr.rd      = register_map.at(rd);
             r_instr.rt      = register_map.at(rt);
-            r_instr.shamt   = 0;
+            r_instr.shamt   = register_map.at(rt);
             r_instr.funct   = i->second;
             
             encoded_instr   = r_instr.encode();

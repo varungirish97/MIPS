@@ -15,9 +15,11 @@ class MIPS_MEMORY {
         uint32_t D_MEM[256]     = {0};              // Data Memory
         uint32_t REG_FILE[32]   = {0};              // Register file
         uint32_t PC             = 0x00000000;       // Program Counter starts off from 0. Indexes the I_MEM
+        std::vector<std::string> I_MEM_ASM;
         int      num_instr      = 0;
 
         MIPS_MEMORY() = default;
+        void write_I_MEM_ASM(std::vector<std::string> INSTR_ASM);
         int load_I_Mem(std::ifstream &input_file);
         int read_RF(uint32_t reg);
         int read_IM(uint32_t program_counter);
@@ -29,8 +31,9 @@ class MIPS_MEMORY {
 };
 
 struct IF_ID {
-    uint32_t PC_plus_4 = 0x00000000;
-    uint32_t Instruction = 0x00000000;
+    uint32_t PC_plus_4      = 0x00000000;
+    uint32_t Instruction    = 0x00000000;
+    std::string instr_str   = "NOP";
 };
 struct ID_EX {
     uint32_t    PC_plus_4   =   0x00000000;
@@ -41,6 +44,7 @@ struct ID_EX {
     uint32_t    Rt_Val      =   0;
     uint32_t    ALUFunct    =   0;
     int32_t     Immediate   =   0;
+    std::string instr_str   =   "NOP";
 
     bool        RegDst      =   false;                                        //Decides the destination register. For R-Type it is Rd and for I-Type it is Rt
     bool        ALUSrc      =   false;                                        //Decides the 2nd input to the ALU. R-type have the 2nd SRC to be from RegFile, but for I-Type we get it from regValue+sign_extended_imm
@@ -56,6 +60,7 @@ struct EX_MEM {
     uint8_t     Rd          =   0;                                            //Needed for R-Type as this is the destination.                                          //Needed for I-Type as this is the destination.
     uint32_t    ALURes      =   0;
     uint32_t    Rt_Val      =   0;
+    std::string instr_str   =   "NOP";
 
     bool        MemRd       =   false;
     bool        MemWr       =   false;
@@ -67,6 +72,7 @@ struct MEM_WB {
     uint32_t    MemData     =   0;
     uint32_t    ALURes      =   0;
     uint32_t    Rd          =   0;
+    std::string instr_str   =   "NOP";
 
     bool        RegWr       =   false;
     bool        MemToReg    =   false;
@@ -95,11 +101,13 @@ class Pipeline {
                 uint32_t instr      = ALL_MEMORIES.I_MEM[ALL_MEMORIES.PC >> 2];           // Each instruction is 32 bits or 4 bytes, so we need to index IMEM with PC/4
                 IF_ID.Instruction   = instr;
                 IF_ID.PC_plus_4     = ALL_MEMORIES.PC + 4;
+                IF_ID.instr_str     = ALL_MEMORIES.I_MEM_ASM[ALL_MEMORIES.PC >> 2];
                 ALL_MEMORIES.PC    += 4;
             } else {
                 IF_ID.Instruction   = 0;
             }
         }
+        
         void ID_Stage() {
             uint32_t instr      = IF_ID.Instruction;
             uint8_t opcode      = (instr >> 26) & 0x3F;
@@ -115,6 +123,7 @@ class Pipeline {
             ID_EX.Rs        =   rs;
             ID_EX.Rt        =   rt;
             ID_EX.Rd        =   rd;
+            ID_EX.instr_str =   IF_ID.instr_str;
             std::cout << rs << std::endl;
             std::cout << rt << std::endl;
             std::cout << rd << std::endl;
@@ -166,6 +175,7 @@ class Pipeline {
             EX_MEM.MemRd        =   ID_EX.MemRd;
             EX_MEM.MemWr        =   ID_EX.MemWr;
             EX_MEM.MemToReg     =   ID_EX.MemToReg;
+            EX_MEM.instr_str    =   ID_EX.instr_str;
         }
 
         void MEM_Stage() {
@@ -183,6 +193,7 @@ class Pipeline {
             MEM_WB.Rd       =   EX_MEM.Rd;
             MEM_WB.RegWr    =   EX_MEM.RegWr;
             MEM_WB.MemToReg =   EX_MEM.MemToReg;
+            MEM_WB.instr_str=   EX_MEM.instr_str;
         }
 
         void WB_Stage() {
@@ -203,6 +214,10 @@ class Pipeline {
             WB_Stage();
         }
 };
+
+void MIPS_MEMORY::write_I_MEM_ASM(std::vector<std::string> INSTR_ASM) {
+    I_MEM_ASM = INSTR_ASM;
+}
 
 int MIPS_MEMORY::load_I_Mem(std::ifstream &input_file) {
     if(!input_file){
