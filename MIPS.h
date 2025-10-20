@@ -60,7 +60,7 @@ struct ID_EX {
 
 struct EX_MEM {
     uint32_t    PC_plus_4   =   0x00000000;
-    uint8_t     Rd          =   0;                                            //Needed for R-Type as this is the destination.                                          //Needed for I-Type as this is the destination.
+    uint8_t     WriteReg    =   0;                                            //Needed for R-Type as this is the destination.                                          //Needed for I-Type as this is the destination.
     uint32_t    ALURes      =   0;
     uint32_t    Rt_Val      =   0;
     bool        Valid       =   false;
@@ -75,7 +75,7 @@ struct EX_MEM {
 struct MEM_WB {
     uint32_t    MemData     =   0;
     uint32_t    ALURes      =   0;
-    uint32_t    Rd          =   0;
+    uint32_t    WriteReg    =   0;
     bool        Valid       =   false;
     std::string instr_str   =   "NOP";
 
@@ -90,20 +90,23 @@ class Pipeline {
         EX_MEM          EX_MEM;
         MEM_WB          MEM_WB;
         MIPS_MEMORY     ALL_MEMORIES;
+        bool            stall;
 
         Pipeline(uint32_t instr_mem[256], int num_instr){
             for(int i = 0 ; i < 256 ; i++){
                 ALL_MEMORIES.I_MEM[i] = instr_mem[i];
             }
             ALL_MEMORIES.num_instr = num_instr;
+            stall = false;
         }
         
         void generate_control_signals(uint8_t opcode, uint8_t funct);
         uint8_t generate_ALU_control(uint8_t opcode);
         bool isPipelineEmpty();
+        bool hazard_detection_unit(uint8_t Rs, uint8_t Rt);
         
         void IF_Stage() {
-            if (ALL_MEMORIES.PC < ALL_MEMORIES.num_instr * 4) {
+            if (ALL_MEMORIES.PC < ALL_MEMORIES.num_instr * 4 && !this->stall) {
                 uint32_t instr      = ALL_MEMORIES.I_MEM[ALL_MEMORIES.PC >> 2];           // Each instruction is 32 bits or 4 bytes, so we need to index IMEM with PC/4
                 IF_ID.Instruction   = instr;
                 IF_ID.PC_plus_4     = ALL_MEMORIES.PC + 4;
@@ -127,31 +130,41 @@ class Pipeline {
             uint16_t imm        = instr & 0xFFFF;                       // For I type instructions
             uint32_t addr       = instr & 0x3FFFFFF;                    // For J type instructions
             uint8_t shift_op    = (funct == 0x0 || funct == 0x02);      // SLL or SRL
+            this->stall         = hazard_detection_unit(rs, rt);
 
-            ID_EX.PC_plus_4 =   IF_ID.PC_plus_4;
-            ID_EX.Rs        =   rs;
-            ID_EX.Rt        =   rt;
-            ID_EX.Rd        =   rd;
-            ID_EX.instr_str =   IF_ID.instr_str;
-            std::cout << rs << std::endl;
-            std::cout << rt << std::endl;
-            std::cout << rd << std::endl;
+            if( !stall ){
+                ID_EX.PC_plus_4 =   IF_ID.PC_plus_4;
+                ID_EX.Rs        =   rs;
+                ID_EX.Rt        =   rt;
+                ID_EX.Rd        =   rd;
+                ID_EX.instr_str =   IF_ID.instr_str;
+                std::cout << rs << std::endl;
+                std::cout << rt << std::endl;
+                std::cout << rd << std::endl;
 
-            // Read RF and get Rs_val and Rt_val;
-            ID_EX.Rs_Val    =   ALL_MEMORIES.REG_FILE[rs];
-            ID_EX.Rt_Val    =   shift_op ? shamt : ALL_MEMORIES.REG_FILE[rt];
-            ID_EX.shamt     =   shamt;
-            ID_EX.Immediate =   static_cast<int32_t> (imm);
+                // Read RF and get Rs_val and Rt_val;
+                ID_EX.Rs_Val    =   ALL_MEMORIES.REG_FILE[rs];
+                ID_EX.Rt_Val    =   shift_op ? shamt : ALL_MEMORIES.REG_FILE[rt];
+                ID_EX.shamt     =   shamt;
+                ID_EX.Immediate =   static_cast<int32_t> (imm);
 
-            ID_EX.Valid     =   IF_ID.Valid;
-            ID_EX.RegDst    =   false;
-            ID_EX.ALUSrc    =   false;
-            ID_EX.MemRd     =   false;
-            ID_EX.MemWr     =   false;
-            ID_EX.RegWr     =   false;
-            ID_EX.MemToReg  =   false;
+                ID_EX.Valid     =   IF_ID.Valid;
+                ID_EX.RegDst    =   false;
+                ID_EX.ALUSrc    =   false;
+                ID_EX.MemRd     =   false;
+                ID_EX.MemWr     =   false;
+                ID_EX.RegWr     =   false;
+                ID_EX.MemToReg  =   false;
 
-            generate_control_signals(opcode, funct);
+                generate_control_signals(opcode, funct);
+            }
+            else {          // If there is a stall then insert a NOP or a bubble, de-assert the control signals 
+                ID_EX.instr_str =   "NOP";
+                ID_EX.MemWr     =   false;
+                ID_EX.RegWr     =   false;
+            }
+
+
         }
 
         void EX_Stage() {
@@ -186,7 +199,7 @@ class Pipeline {
 
             EX_MEM.Valid        =   ID_EX.Valid;
             EX_MEM.PC_plus_4    =   ID_EX.PC_plus_4;
-            EX_MEM.Rd           =   (ID_EX.RegDst) ? ID_EX.Rd : ID_EX.Rt;
+            EX_MEM.WriteReg     =   (ID_EX.RegDst) ? ID_EX.Rd : ID_EX.Rt;
             EX_MEM.Rt_Val       =   ID_EX.Rt_Val;
             EX_MEM.ALURes       =   result;
             EX_MEM.RegWr        =   ID_EX.RegWr;
@@ -209,7 +222,7 @@ class Pipeline {
 
             MEM_WB.Valid    =   EX_MEM.Valid;
             MEM_WB.ALURes   =   EX_MEM.ALURes;
-            MEM_WB.Rd       =   EX_MEM.Rd;
+            MEM_WB.WriteReg =   EX_MEM.WriteReg;
             MEM_WB.RegWr    =   EX_MEM.RegWr;
             MEM_WB.MemToReg =   EX_MEM.MemToReg;
             MEM_WB.instr_str=   EX_MEM.instr_str;
@@ -221,7 +234,7 @@ class Pipeline {
             
             // Updates the Register file
             if (MEM_WB.RegWr) {
-                ALL_MEMORIES.REG_FILE[MEM_WB.Rd]    =   reg_data;
+                ALL_MEMORIES.REG_FILE[MEM_WB.WriteReg]    =   reg_data;
             }
         }
         
@@ -396,4 +409,13 @@ bool Pipeline::isPipelineEmpty() {
     bool PipelineEmpty = !(IF_ID.Valid || ID_EX.Valid || EX_MEM.Valid || MEM_WB.Valid);
     return PipelineEmpty;
 }
+
+bool Pipeline::hazard_detection_unit(uint8_t Rs, uint8_t Rt) {
+    if(this->ID_EX.RegWr && !this->ID_EX.RegDst && (this->ID_EX.Rt == Rs || this->ID_EX.Rt == Rt) ) {           // LW instruction in EX and the destination of LW matches source of ID stage instruction
+        return true;
+    }
+    else
+        return false;
+}
+
 #endif
