@@ -17,7 +17,7 @@ int main(){
     int mem_result = mips_mem.load_I_Mem(input_file);
     Pipeline pipeline(mips_mem.I_MEM, mips_mem.num_instr);
     pipeline.ALL_MEMORIES.write_I_MEM_ASM(I_MEM_ASM);
-    
+
     pipeline.ALL_MEMORIES.write_DM(0, 10);
     pipeline.ALL_MEMORIES.write_DM(1, 15);
     pipeline.ALL_MEMORIES.write_DM(2, 20);
@@ -26,9 +26,10 @@ int main(){
     
     pipeline.ALL_MEMORIES.write_RF(0, 0);
     int count = 0;
+    bool pipeline_empty = false;
 
     // Running the stage functions from WB->IF so that each stage is operating on data from the previous stage
-    while(pipeline.ALL_MEMORIES.PC <= pipeline.ALL_MEMORIES.num_instr * 4){
+    while(pipeline.ALL_MEMORIES.PC <= pipeline.ALL_MEMORIES.num_instr * 4 && !pipeline_empty){
         pipeline.WB_Stage();
         pipeline.MEM_Stage();
         pipeline.EX_Stage();
@@ -36,7 +37,9 @@ int main(){
         pipeline.IF_Stage();
         std::cout << "Clock : " << count << std::endl;
         count = count + 1;
+        pipeline_empty = pipeline.isPipelineEmpty();
     }
+    std::cout << "Pipelined CPU ran for : " << count << " cycles" << std::endl;
     
 
     return 0;

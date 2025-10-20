@@ -33,6 +33,7 @@ class MIPS_MEMORY {
 struct IF_ID {
     uint32_t PC_plus_4      = 0x00000000;
     uint32_t Instruction    = 0x00000000;
+    bool     Valid          = false;
     std::string instr_str   = "NOP";
 };
 struct ID_EX {
@@ -42,8 +43,10 @@ struct ID_EX {
     uint8_t     Rd          =   0;
     uint32_t    Rs_Val      =   0;
     uint32_t    Rt_Val      =   0;
+    uint32_t    shamt       =   0;
     uint32_t    ALUFunct    =   0;
     int32_t     Immediate   =   0;
+    bool        Valid       =   false;
     std::string instr_str   =   "NOP";
 
     bool        RegDst      =   false;                                        //Decides the destination register. For R-Type it is Rd and for I-Type it is Rt
@@ -60,6 +63,7 @@ struct EX_MEM {
     uint8_t     Rd          =   0;                                            //Needed for R-Type as this is the destination.                                          //Needed for I-Type as this is the destination.
     uint32_t    ALURes      =   0;
     uint32_t    Rt_Val      =   0;
+    bool        Valid       =   false;
     std::string instr_str   =   "NOP";
 
     bool        MemRd       =   false;
@@ -72,6 +76,7 @@ struct MEM_WB {
     uint32_t    MemData     =   0;
     uint32_t    ALURes      =   0;
     uint32_t    Rd          =   0;
+    bool        Valid       =   false;
     std::string instr_str   =   "NOP";
 
     bool        RegWr       =   false;
@@ -95,6 +100,7 @@ class Pipeline {
         
         void generate_control_signals(uint8_t opcode, uint8_t funct);
         uint8_t generate_ALU_control(uint8_t opcode);
+        bool isPipelineEmpty();
         
         void IF_Stage() {
             if (ALL_MEMORIES.PC < ALL_MEMORIES.num_instr * 4) {
@@ -103,8 +109,10 @@ class Pipeline {
                 IF_ID.PC_plus_4     = ALL_MEMORIES.PC + 4;
                 IF_ID.instr_str     = ALL_MEMORIES.I_MEM_ASM[ALL_MEMORIES.PC >> 2];
                 ALL_MEMORIES.PC    += 4;
+                IF_ID.Valid         = true;
             } else {
                 IF_ID.Instruction   = 0;
+                IF_ID.Valid         = false;
             }
         }
         
@@ -118,6 +126,7 @@ class Pipeline {
             uint8_t funct       = instr & 0x3F;
             uint16_t imm        = instr & 0xFFFF;                       // For I type instructions
             uint32_t addr       = instr & 0x3FFFFFF;                    // For J type instructions
+            uint8_t shift_op    = (funct == 0x0 || funct == 0x02);      // SLL or SRL
 
             ID_EX.PC_plus_4 =   IF_ID.PC_plus_4;
             ID_EX.Rs        =   rs;
@@ -130,9 +139,11 @@ class Pipeline {
 
             // Read RF and get Rs_val and Rt_val;
             ID_EX.Rs_Val    =   ALL_MEMORIES.REG_FILE[rs];
-            ID_EX.Rt_Val    =   ALL_MEMORIES.REG_FILE[rt];
+            ID_EX.Rt_Val    =   shift_op ? shamt : ALL_MEMORIES.REG_FILE[rt];
+            ID_EX.shamt     =   shamt;
             ID_EX.Immediate =   static_cast<int32_t> (imm);
 
+            ID_EX.Valid     =   IF_ID.Valid;
             ID_EX.RegDst    =   false;
             ID_EX.ALUSrc    =   false;
             ID_EX.MemRd     =   false;
@@ -165,8 +176,15 @@ class Pipeline {
                 case 0x05:      // SLT
                     result = (ALU_A < ALU_B) ? 0x1 : 0x0;
                     break;
+                case 0x06:      // SLL
+                    result = (ALU_A << ALU_B);
+                    break;
+                case 0x07:      // SRL
+                    result = (ALU_A >> ALU_B);
+                    break;
             }
 
+            EX_MEM.Valid        =   ID_EX.Valid;
             EX_MEM.PC_plus_4    =   ID_EX.PC_plus_4;
             EX_MEM.Rd           =   (ID_EX.RegDst) ? ID_EX.Rd : ID_EX.Rt;
             EX_MEM.Rt_Val       =   ID_EX.Rt_Val;
@@ -189,6 +207,7 @@ class Pipeline {
                 ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4]   =   EX_MEM.Rt_Val;
             }
 
+            MEM_WB.Valid    =   EX_MEM.Valid;
             MEM_WB.ALURes   =   EX_MEM.ALURes;
             MEM_WB.Rd       =   EX_MEM.Rd;
             MEM_WB.RegWr    =   EX_MEM.RegWr;
@@ -364,9 +383,17 @@ uint8_t Pipeline::generate_ALU_control(uint8_t opcode) {
             return 0x02;
         case 0x05:      // BNE
             return 0x02;
+        case 0x00:      // SLL
+            return 0x06;
+        case 0x02:      // SRL
+            return 0x07;
         default:
             return 0x0;
     }
 }
 
+bool Pipeline::isPipelineEmpty() {
+    bool PipelineEmpty = !(IF_ID.Valid || ID_EX.Valid || EX_MEM.Valid || MEM_WB.Valid);
+    return PipelineEmpty;
+}
 #endif
