@@ -75,6 +75,7 @@ struct EX_MEM {
 struct MEM_WB {
     uint32_t    MemData     =   0;
     uint32_t    ALURes      =   0;
+    uint32_t    Mem_ALU     =   0;
     uint32_t    WriteReg    =   0;
     bool        Valid       =   false;
     std::string instr_str   =   "NOP";
@@ -104,6 +105,7 @@ class Pipeline {
         uint8_t generate_ALU_control(uint8_t opcode);
         bool isPipelineEmpty();
         bool hazard_detection_unit(uint8_t Rs, uint8_t Rt);
+        uint16_t forwarding_unit();
         
         void IF_Stage() {
             if (ALL_MEMORIES.PC < ALL_MEMORIES.num_instr * 4 && !this->stall) {
@@ -168,10 +170,17 @@ class Pipeline {
         }
 
         void EX_Stage() {
-            uint8_t ALU_ctrl    = generate_ALU_control(ID_EX.ALUFunct);        // One hot encoded ALU control signals
-            uint32_t result     = 0x0;
-            uint32_t ALU_A      =   ID_EX.Rs_Val;
-            uint32_t ALU_B      =   (ID_EX.ALUSrc) ? ID_EX.Immediate : ID_EX.Rt_Val;
+            uint16_t ALUSrc     =   forwarding_unit();
+            uint8_t ALUSelA     =   ALUSrc & 0xFF;
+            uint8_t ALUSelB     =   (ALUSrc >> 8) & 0xFF;
+
+            uint8_t ALU_ctrl    =   generate_ALU_control(ID_EX.ALUFunct);        // One hot encoded ALU control signals
+            uint32_t result     =   0x0;
+
+            uint32_t ALU_A      =   (ALUSelA == 2) ? EX_MEM.ALURes : (ALUSelA == 1) ? MEM_WB.Mem_ALU : ID_EX.Rs_Val;
+            //uint32_t ALU_A      =   ID_EX.Rs_Val;
+            uint32_t ALU_B      =   (ALUSelB == 2) ? EX_MEM.ALURes : (ALUSelA == 1) ? MEM_WB.Mem_ALU : (ID_EX.ALUSrc) ? ID_EX.Immediate : ID_EX.Rt_Val;
+            //uint32_t ALU_B      =   (ID_EX.ALUSrc) ? ID_EX.Immediate : ID_EX.Rt_Val;
 
             switch(ALU_ctrl) {
                 case 0x01:      // ADD
@@ -226,6 +235,7 @@ class Pipeline {
             MEM_WB.RegWr    =   EX_MEM.RegWr;
             MEM_WB.MemToReg =   EX_MEM.MemToReg;
             MEM_WB.instr_str=   EX_MEM.instr_str;
+            MEM_WB.Mem_ALU  =   (EX_MEM.MemToReg) ? MEM_WB.MemData : EX_MEM.ALURes;
         }
 
         void WB_Stage() {
@@ -418,4 +428,26 @@ bool Pipeline::hazard_detection_unit(uint8_t Rs, uint8_t Rt) {
         return false;
 }
 
+uint16_t Pipeline::forwarding_unit() {
+    uint8_t ALUSelA = 0;            // Rs (1st operand)
+    uint8_t ALUSelB = 0;            // Rt (2nd operand)
+    uint16_t ALUSrc = 0;
+    // R-type in MEM stage and a dependent R-type in EX, output data can be forwarded to the source in EX
+    if(EX_MEM.RegWr && !EX_MEM.MemRd && EX_MEM.WriteReg == ID_EX.Rs){
+        ALUSelA     =   2;
+    }
+    // R-type / LW in WB stage and a dependent R-type in EX, output data can be forwarded to the source in EX
+    else if(MEM_WB.RegWr && MEM_WB.WriteReg == ID_EX.Rs) {
+        ALUSelA     =   1;
+    }
+    if(EX_MEM.RegWr && !EX_MEM.MemRd && EX_MEM.WriteReg == ID_EX.Rt){
+        ALUSelB     =   2;
+    }
+    else if(MEM_WB.RegWr && MEM_WB.WriteReg == ID_EX.Rt) {
+        ALUSelB     =   1;
+    }
+
+    ALUSrc  =   (ALUSelB << 8 | ALUSelA);
+    return ALUSrc;
+}
 #endif
