@@ -37,6 +37,7 @@ int main(){
         pipeline.IF_Stage();
         std::cout << "Clock : " << count << std::endl;
         count = count + 1;
+        pipeline.updateStageRegs(count);
         pipeline_empty = pipeline.isPipelineEmpty();
     }
     std::cout << "Pipelined CPU ran for : " << count << " cycles" << std::endl;

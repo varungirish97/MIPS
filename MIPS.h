@@ -84,12 +84,16 @@ struct MEM_WB {
     bool        MemToReg    =   false;
 };
 
+struct WB_OUT {
+    uint32_t    regOut;
+};
 class Pipeline {
     public:
-        IF_ID           IF_ID;
-        ID_EX           ID_EX;
-        EX_MEM          EX_MEM;
-        MEM_WB          MEM_WB;
+        IF_ID           IF_ID, next_IF_ID;
+        ID_EX           ID_EX, next_ID_EX;
+        EX_MEM          EX_MEM, next_EX_MEM;
+        MEM_WB          MEM_WB, next_MEM_WB;
+        WB_OUT          WB_OUT;
         MIPS_MEMORY     ALL_MEMORIES;
         bool            stall;
 
@@ -106,18 +110,21 @@ class Pipeline {
         bool isPipelineEmpty();
         bool hazard_detection_unit(uint8_t Rs, uint8_t Rt);
         uint16_t forwarding_unit();
+        void updateStageRegs(int count);
         
         void IF_Stage() {
-            if (ALL_MEMORIES.PC < ALL_MEMORIES.num_instr * 4 && !this->stall) {
-                uint32_t instr      = ALL_MEMORIES.I_MEM[ALL_MEMORIES.PC >> 2];           // Each instruction is 32 bits or 4 bytes, so we need to index IMEM with PC/4
-                IF_ID.Instruction   = instr;
-                IF_ID.PC_plus_4     = ALL_MEMORIES.PC + 4;
-                IF_ID.instr_str     = ALL_MEMORIES.I_MEM_ASM[ALL_MEMORIES.PC >> 2];
-                ALL_MEMORIES.PC    += 4;
-                IF_ID.Valid         = true;
+            if (ALL_MEMORIES.PC < ALL_MEMORIES.num_instr * 4) {
+                if(!this->stall) {
+                    uint32_t instr      = ALL_MEMORIES.I_MEM[ALL_MEMORIES.PC >> 2];           // Each instruction is 32 bits or 4 bytes, so we need to index IMEM with PC/4
+                    next_IF_ID.Instruction   = instr;
+                    next_IF_ID.PC_plus_4     = ALL_MEMORIES.PC + 4;
+                    next_IF_ID.instr_str     = ALL_MEMORIES.I_MEM_ASM[ALL_MEMORIES.PC >> 2];
+                    ALL_MEMORIES.PC    += 4;
+                    next_IF_ID.Valid         = true;
+                }
             } else {
-                IF_ID.Instruction   = 0;
-                IF_ID.Valid         = false;
+                next_IF_ID.Instruction   = 0;
+                next_IF_ID.Valid         = false;
             }
         }
         
@@ -135,35 +142,33 @@ class Pipeline {
             this->stall         = hazard_detection_unit(rs, rt);
 
             if( !stall ){
-                ID_EX.PC_plus_4 =   IF_ID.PC_plus_4;
-                ID_EX.Rs        =   rs;
-                ID_EX.Rt        =   rt;
-                ID_EX.Rd        =   rd;
-                ID_EX.instr_str =   IF_ID.instr_str;
-                std::cout << rs << std::endl;
-                std::cout << rt << std::endl;
-                std::cout << rd << std::endl;
+                next_ID_EX.PC_plus_4 =   IF_ID.PC_plus_4;
+                next_ID_EX.Rs        =   rs;
+                next_ID_EX.Rt        =   rt;
+                next_ID_EX.Rd        =   rd;
+                next_ID_EX.instr_str =   IF_ID.instr_str;
 
                 // Read RF and get Rs_val and Rt_val;
-                ID_EX.Rs_Val    =   ALL_MEMORIES.REG_FILE[rs];
-                ID_EX.Rt_Val    =   shift_op ? shamt : ALL_MEMORIES.REG_FILE[rt];
-                ID_EX.shamt     =   shamt;
-                ID_EX.Immediate =   static_cast<int32_t> (imm);
+                next_ID_EX.Rs_Val    =   ALL_MEMORIES.REG_FILE[rs];
+                next_ID_EX.Rt_Val    =   shift_op ? shamt : ALL_MEMORIES.REG_FILE[rt];
+                next_ID_EX.shamt     =   shamt;
+                next_ID_EX.Immediate =   static_cast<int32_t> (imm);
 
-                ID_EX.Valid     =   IF_ID.Valid;
-                ID_EX.RegDst    =   false;
-                ID_EX.ALUSrc    =   false;
-                ID_EX.MemRd     =   false;
-                ID_EX.MemWr     =   false;
-                ID_EX.RegWr     =   false;
-                ID_EX.MemToReg  =   false;
+                next_ID_EX.Valid     =   IF_ID.Valid;
+                next_ID_EX.RegDst    =   false;
+                next_ID_EX.ALUSrc    =   false;
+                next_ID_EX.MemRd     =   false;
+                next_ID_EX.MemWr     =   false;
+                next_ID_EX.RegWr     =   false;
+                next_ID_EX.MemToReg  =   false;
 
                 generate_control_signals(opcode, funct);
             }
             else {          // If there is a stall then insert a NOP or a bubble, de-assert the control signals 
-                ID_EX.instr_str =   "NOP";
-                ID_EX.MemWr     =   false;
-                ID_EX.RegWr     =   false;
+                next_ID_EX.instr_str =   "NOP";
+                next_ID_EX.MemWr     =   false;
+                next_ID_EX.MemRd     =   false;
+                next_ID_EX.RegWr     =   false;
             }
 
 
@@ -177,9 +182,9 @@ class Pipeline {
             uint8_t ALU_ctrl    =   generate_ALU_control(ID_EX.ALUFunct);        // One hot encoded ALU control signals
             uint32_t result     =   0x0;
 
-            uint32_t ALU_A      =   (ALUSelA == 2) ? EX_MEM.ALURes : (ALUSelA == 1) ? MEM_WB.Mem_ALU : ID_EX.Rs_Val;
+            uint32_t ALU_A      =   (ALUSelA == 2) ? EX_MEM.ALURes : (ALUSelA == 1) ? next_MEM_WB.Mem_ALU : ID_EX.Rs_Val;
             //uint32_t ALU_A      =   ID_EX.Rs_Val;
-            uint32_t ALU_B      =   (ALUSelB == 2) ? EX_MEM.ALURes : (ALUSelA == 1) ? MEM_WB.Mem_ALU : (ID_EX.ALUSrc) ? ID_EX.Immediate : ID_EX.Rt_Val;
+            uint32_t ALU_B      =   (ALUSelB == 2) ? EX_MEM.ALURes : (ALUSelB == 1) ? next_MEM_WB.Mem_ALU : (ID_EX.ALUSrc) ? ID_EX.Immediate : ID_EX.Rt_Val;
             //uint32_t ALU_B      =   (ID_EX.ALUSrc) ? ID_EX.Immediate : ID_EX.Rt_Val;
 
             switch(ALU_ctrl) {
@@ -206,36 +211,36 @@ class Pipeline {
                     break;
             }
 
-            EX_MEM.Valid        =   ID_EX.Valid;
-            EX_MEM.PC_plus_4    =   ID_EX.PC_plus_4;
-            EX_MEM.WriteReg     =   (ID_EX.RegDst) ? ID_EX.Rd : ID_EX.Rt;
-            EX_MEM.Rt_Val       =   ID_EX.Rt_Val;
-            EX_MEM.ALURes       =   result;
-            EX_MEM.RegWr        =   ID_EX.RegWr;
-            EX_MEM.MemRd        =   ID_EX.MemRd;
-            EX_MEM.MemWr        =   ID_EX.MemWr;
-            EX_MEM.MemToReg     =   ID_EX.MemToReg;
-            EX_MEM.instr_str    =   ID_EX.instr_str;
+            next_EX_MEM.Valid        =   ID_EX.Valid;
+            next_EX_MEM.PC_plus_4    =   ID_EX.PC_plus_4;
+            next_EX_MEM.WriteReg     =   (ID_EX.RegDst) ? ID_EX.Rd : ID_EX.Rt;
+            next_EX_MEM.Rt_Val       =   ID_EX.Rt_Val;
+            next_EX_MEM.ALURes       =   result;
+            next_EX_MEM.RegWr        =   ID_EX.RegWr;
+            next_EX_MEM.MemRd        =   ID_EX.MemRd;
+            next_EX_MEM.MemWr        =   ID_EX.MemWr;
+            next_EX_MEM.MemToReg     =   ID_EX.MemToReg;
+            next_EX_MEM.instr_str    =   ID_EX.instr_str;
         }
 
         void MEM_Stage() {
-            MEM_WB.MemData = 0;
+            next_MEM_WB.MemData = 0;
             // Handling the LW instruction
             if(EX_MEM.MemRd) {
-                MEM_WB.MemData   =   ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4];
+                next_MEM_WB.MemData   =   ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4];
             }
             // Handling the SW instruction
             if(EX_MEM.MemWr) {
                 ALL_MEMORIES.D_MEM[EX_MEM.ALURes / 4]   =   EX_MEM.Rt_Val;
             }
 
-            MEM_WB.Valid    =   EX_MEM.Valid;
-            MEM_WB.ALURes   =   EX_MEM.ALURes;
-            MEM_WB.WriteReg =   EX_MEM.WriteReg;
-            MEM_WB.RegWr    =   EX_MEM.RegWr;
-            MEM_WB.MemToReg =   EX_MEM.MemToReg;
-            MEM_WB.instr_str=   EX_MEM.instr_str;
-            MEM_WB.Mem_ALU  =   (EX_MEM.MemToReg) ? MEM_WB.MemData : EX_MEM.ALURes;
+            next_MEM_WB.Valid    =   EX_MEM.Valid;
+            next_MEM_WB.ALURes   =   EX_MEM.ALURes;
+            next_MEM_WB.WriteReg =   EX_MEM.WriteReg;
+            next_MEM_WB.RegWr    =   EX_MEM.RegWr;
+            next_MEM_WB.MemToReg =   EX_MEM.MemToReg;
+            next_MEM_WB.instr_str=   EX_MEM.instr_str;
+            next_MEM_WB.Mem_ALU  =   (EX_MEM.MemToReg) ? MEM_WB.MemData : EX_MEM.ALURes;
         }
 
         void WB_Stage() {
@@ -246,6 +251,7 @@ class Pipeline {
             if (MEM_WB.RegWr) {
                 ALL_MEMORIES.REG_FILE[MEM_WB.WriteReg]    =   reg_data;
             }
+            WB_OUT.regOut   =   reg_data;
         }
         
         void clock() {
@@ -348,32 +354,32 @@ void Pipeline::generate_control_signals(uint8_t opcode, uint8_t funct) {
         j_type  =   true;
     }
     if(r_type) {
-        ID_EX.RegDst    =   true;
-        ID_EX.RegWr     =   true;
-        ID_EX.ALUFunct  =   funct;
+        next_ID_EX.RegDst    =   true;
+        next_ID_EX.RegWr     =   true;
+        next_ID_EX.ALUFunct  =   funct;
     }
     // Load Word instruction
     else if(i_type & (opcode == 0x23)) {
-        ID_EX.ALUSrc    =   true;
-        ID_EX.MemRd     =   true;
-        ID_EX.RegWr     =   true;
-        ID_EX.MemToReg  =   true;
-        ID_EX.ALUFunct  =   opcode;
+        next_ID_EX.ALUSrc    =   true;
+        next_ID_EX.MemRd     =   true;
+        next_ID_EX.RegWr     =   true;
+        next_ID_EX.MemToReg  =   true;
+        next_ID_EX.ALUFunct  =   opcode;
     }
     // Store Word instruction
     else if(i_type & (opcode == 0x2B)) {
-        ID_EX.ALUSrc    =   true;
-        ID_EX.MemWr     =   true;
-        ID_EX.ALUFunct  =   opcode;
+        next_ID_EX.ALUSrc    =   true;
+        next_ID_EX.MemWr     =   true;
+        next_ID_EX.ALUFunct  =   opcode;
     }
     else if(i_type) {
-        ID_EX.ALUSrc    =   true;
-        ID_EX.RegWr     =   true;
-        ID_EX.ALUFunct  =   opcode;
+        next_ID_EX.ALUSrc    =   true;
+        next_ID_EX.RegWr     =   true;
+        next_ID_EX.ALUFunct  =   opcode;
     }
     else if(i_type & (opcode == 0x04 || opcode == 0x05)) {
-        ID_EX.Branch    =   true;
-        ID_EX.ALUFunct  =   opcode;
+        next_ID_EX.Branch    =   true;
+        next_ID_EX.ALUFunct  =   opcode;
     }
 
 }
@@ -416,7 +422,7 @@ uint8_t Pipeline::generate_ALU_control(uint8_t opcode) {
 }
 
 bool Pipeline::isPipelineEmpty() {
-    bool PipelineEmpty = !(IF_ID.Valid || ID_EX.Valid || EX_MEM.Valid || MEM_WB.Valid);
+    bool PipelineEmpty = !(IF_ID.Valid || ID_EX.Valid || EX_MEM.Valid || MEM_WB.Valid || next_IF_ID.Valid || next_ID_EX.Valid || next_EX_MEM.Valid || next_MEM_WB.Valid);
     return PipelineEmpty;
 }
 
@@ -449,5 +455,13 @@ uint16_t Pipeline::forwarding_unit() {
 
     ALUSrc  =   (ALUSelB << 8 | ALUSelA);
     return ALUSrc;
+}
+
+void Pipeline::updateStageRegs(int clock) {
+    std::cout << MEM_WB.instr_str << " in clock : " << clock << std::endl;
+    IF_ID   =   next_IF_ID;
+    ID_EX   =   next_ID_EX;
+    EX_MEM  =   next_EX_MEM;
+    MEM_WB  =   next_MEM_WB;
 }
 #endif
